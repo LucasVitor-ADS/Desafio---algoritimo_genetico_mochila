@@ -5,7 +5,6 @@ import numpy as np
 def avaliar_individuo(cromossomo, pesos_e_valores, peso_maximo):
     peso_total = sum(pesos_e_valores[i][0] for i in range(len(cromossomo)) if cromossomo[i] == 1)
     valor_total = sum(pesos_e_valores[i][1] for i in range(len(cromossomo)) if cromossomo[i] == 1)
-    # Corrigido: Removi a palavra 'se' que estava errada
     return valor_total if peso_total <= peso_maximo else 0  # Penaliza soluções que ultrapassam o peso máximo
 
 # Gera a população inicial (binária)
