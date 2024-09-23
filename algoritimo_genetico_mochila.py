@@ -1,78 +1,105 @@
 import random
+import numpy as np
 
-# Função de aptidão (fitness)
-def calcula_fitness(cromossomo, pesos_e_valores, peso_maximo):
-    valor_total = 0
-    peso_total = 0
-    for i, gene in enumerate(cromossomo):
-        if gene == 1:
-            peso_total += pesos_e_valores[i][0]
-            valor_total += pesos_e_valores[i][1]
-    if peso_total > peso_maximo:
-        return 0  # Penalidade se o peso exceder o limite
-    return valor_total
+# Função de avaliação: Retorna o valor total dos itens, desde que o peso não ultrapasse o limite
+def avaliar_individuo(cromossomo, pesos_e_valores, peso_maximo):
+    peso_total = sum(pesos_e_valores[i][0] for i in range(len(cromossomo)) if cromossomo[i] == 1)
+    valor_total = sum(pesos_e_valores[i][1] for i in range(len(cromossomo)) if cromossomo[i] == 1)
+    # Corrigido: Removi a palavra 'se' que estava errada
+    return valor_total if peso_total <= peso_maximo else 0  # Penaliza soluções que ultrapassam o peso máximo
 
-# Função para criar um cromossomo aleatório
-def cria_cromossomo(tamanho):
-    return [random.randint(0, 1) for _ in range(tamanho)]
+# Gera a população inicial (binária)
+def gerar_populacao(tamanho_populacao, tamanho_cromossomo):
+    return [np.random.randint(2, size=tamanho_cromossomo).tolist() for _ in range(tamanho_populacao)]
 
-# Função de seleção por torneio
-def selecao_por_torneio(populacao, fitness, k=3):
-    selecionados = random.sample(list(enumerate(fitness)), k)
-    melhor = max(selecionados, key=lambda x: x[1])
-    return populacao[melhor[0]]
-
-# Função de cruzamento (crossover)
+# Função de crossover de 2 pontos
 def crossover(pai1, pai2):
-    ponto_de_corte = random.randint(1, len(pai1) - 1)
-    filho1 = pai1[:ponto_de_corte] + pai2[ponto_de_corte:]
-    filho2 = pai2[:ponto_de_corte] + pai1[ponto_de_corte:]
+    ponto1 = random.randint(1, len(pai1) - 2)
+    ponto2 = random.randint(ponto1 + 1, len(pai1) - 1)
+    filho1 = pai1[:ponto1] + pai2[ponto1:ponto2] + pai1[ponto2:]
+    filho2 = pai2[:ponto1] + pai1[ponto1:ponto2] + pai2[ponto2:]
     return filho1, filho2
 
 # Função de mutação
-def mutacao(cromossomo, taxa_mutacao=0.01):
+def mutacao(cromossomo, taxa_mutacao):
     for i in range(len(cromossomo)):
         if random.random() < taxa_mutacao:
-            cromossomo[i] = 1 if cromossomo[i] == 0 else 0
-    return cromossomo
+            cromossomo[i] = 1 - cromossomo[i]  # Inverte o gene
 
-# Algoritmo genético
-def algoritmo_genetico(pesos_e_valores, peso_maximo, num_cromossomos, geracoes):
-    populacao = [cria_cromossomo(len(pesos_e_valores)) for _ in range(num_cromossomos)]
-    historico_melhores = []
+# Seleção por roleta
+def selecao_roleta_viciada(populacao, fitnesses):
+    soma_fitness = sum(fitnesses)
+    if soma_fitness == 0:
+        return random.choice(populacao)  # Evita divisão por zero
+    roleta = [fitness / soma_fitness for fitness in fitnesses]
+    selecionado = np.random.choice(len(populacao), p=roleta)
+    return populacao[selecionado]
+
+# Algoritmo Genético para o problema da mochila
+def algoritmo_genetico_mochila(pesos_e_valores, peso_maximo, numero_de_cromossomos, geracoes, taxa_mutacao=0.3, elitismo=True):
+    tamanho_cromossomo = len(pesos_e_valores)
+    populacao = gerar_populacao(numero_de_cromossomos, tamanho_cromossomo)
+    melhor_individuo_por_geracao = []
 
     for geracao in range(geracoes):
-        fitness = [calcula_fitness(c, pesos_e_valores, peso_maximo) for c in populacao]
+        fitnesses = [avaliar_individuo(cromossomo, pesos_e_valores, peso_maximo) for cromossomo in populacao]
         nova_populacao = []
 
-        # Guardar o melhor da geração
-        melhor_cromossomo = max(populacao, key=lambda c: calcula_fitness(c, pesos_e_valores, peso_maximo))
-        historico_melhores.append([calcula_fitness(melhor_cromossomo, pesos_e_valores, peso_maximo), melhor_cromossomo])
+        # Elitismo: guarda o melhor indivíduo da geração anterior
+        if elitismo:
+            melhor_fitness = max(fitnesses)
+            melhor_individuo = populacao[fitnesses.index(melhor_fitness)]
+            nova_populacao.append(melhor_individuo)
 
-        # Seleção, cruzamento e mutação
-        while len(nova_populacao) < num_cromossomos:
-            pai1 = selecao_por_torneio(populacao, fitness)
-            pai2 = selecao_por_torneio(populacao, fitness)
+        # Reproduz novos indivíduos
+        while len(nova_populacao) < numero_de_cromossomos:
+            pai1 = selecao_roleta_viciada(populacao, fitnesses)
+            pai2 = selecao_roleta_viciada(populacao, fitnesses)
             filho1, filho2 = crossover(pai1, pai2)
-            nova_populacao.append(mutacao(filho1))
-            if len(nova_populacao) < num_cromossomos:
-                nova_populacao.append(mutacao(filho2))
+            mutacao(filho1, taxa_mutacao)
+            mutacao(filho2, taxa_mutacao)
+            nova_populacao.extend([filho1, filho2])
 
-        populacao = nova_populacao
+        populacao = nova_populacao[:numero_de_cromossomos]
 
-    return historico_melhores
+        # Avalia a nova população e guarda o melhor indivíduo
+        fitnesses = [avaliar_individuo(cromossomo, pesos_e_valores, peso_maximo) for cromossomo in populacao]
+        melhor_fitness = max(fitnesses)
+        melhor_individuo = populacao[fitnesses.index(melhor_fitness)]
+        melhor_individuo_por_geracao.append((melhor_fitness, melhor_individuo))
 
-# Exemplo de execução
-pesos_e_valores = [
-    [2, 10], [4, 30], [6, 300], [8, 10], [8, 30], 
-    [8, 300], [12, 50], [25, 75], [50, 100], [100, 400]
-]
-peso_maximo = 100
-numero_de_cromossomos = 150
-geracoes = 50
+        # Calcula a média de peso dos cromossomos selecionados (com valor 1)
+        print(f"Geração {geracao + 1}: Melhor valor = {melhor_fitness:.2f}, Cromossomos = {melhor_individuo}")
 
-resultado = algoritmo_genetico(pesos_e_valores, peso_maximo, numero_de_cromossomos, geracoes)
+    return melhor_individuo_por_geracao
 
-# Imprimir os melhores indivíduos de cada geração
-for melhor in resultado:
-    print(melhor)
+# Função principal que pergunta as entradas do usuário
+def main():
+    # Solicita os dados de entrada
+    pesos_e_valores = [
+        [2, 10],
+        [4, 30],
+        [6, 300],
+        [8, 10],
+        [8, 30],
+        [8, 300],
+        [12, 50],
+        [25, 75],
+        [50, 100],
+        [100, 400]
+    ]
+
+    print("Dados de entrada:")
+    print("Pesos e Valores:", pesos_e_valores)
+
+    peso_maximo = 100
+    numero_de_cromossomos = 150
+    geracoes = 50
+
+    # Executa o algoritmo genético
+    algoritmo_genetico_mochila(pesos_e_valores, peso_maximo, numero_de_cromossomos, geracoes)
+
+# Executa a função principal
+if __name__ == "__main__":
+    main()
+
